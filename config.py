@@ -80,10 +80,20 @@ DEFAULT_CHECKPOINT_DIR = DEFAULT_ARTIFACT_ROOT / "checkpoints"
 DEFAULT_LOG_DIR = DEFAULT_ARTIFACT_ROOT / "logs"
 DEFAULT_REPORT_DIR = DEFAULT_ARTIFACT_ROOT / "reports"
 DEFAULT_OUTPUT_DIR = DEFAULT_ARTIFACT_ROOT / "outputs"
+DEFAULT_RAW_DATA_DIR = Path("datasets_raw")
 
 DEFAULT_COLAB_ROOT = Path("/content")
 DEFAULT_COLAB_PROJECT_DIR = DEFAULT_COLAB_ROOT / "PyWatermark"
 DEFAULT_COLAB_DRIVE_DIR = DEFAULT_COLAB_ROOT / "drive" / "MyDrive" / "PyWatermark"
+
+DEFAULT_COCO_DOWNLOAD_SPLIT = "val2017"
+DEFAULT_COCO_TRAIN_COUNT = 4000
+DEFAULT_COCO_VAL_COUNT = 500
+DEFAULT_COCO_TEST_COUNT = 500
+COCO_IMAGE_URLS: dict[str, str] = {
+    "train2017": "http://images.cocodataset.org/zips/train2017.zip",
+    "val2017": "http://images.cocodataset.org/zips/val2017.zip",
+}
 
 
 @dataclass(frozen=True)
@@ -98,6 +108,7 @@ class PathConfig:
     log_dir: Path = DEFAULT_LOG_DIR
     report_dir: Path = DEFAULT_REPORT_DIR
     output_dir: Path = DEFAULT_OUTPUT_DIR
+    raw_data_dir: Path = DEFAULT_RAW_DATA_DIR
     colab_root: Path = DEFAULT_COLAB_ROOT
     colab_project_dir: Path = DEFAULT_COLAB_PROJECT_DIR
     colab_drive_dir: Path = DEFAULT_COLAB_DRIVE_DIR
@@ -226,6 +237,17 @@ class DemoConfig:
 
 
 @dataclass(frozen=True)
+class DatasetPrepConfig:
+    """Defaults for dataset preparation utilities."""
+
+    coco_download_split: str = DEFAULT_COCO_DOWNLOAD_SPLIT
+    train_count: int = DEFAULT_COCO_TRAIN_COUNT
+    val_count: int = DEFAULT_COCO_VAL_COUNT
+    test_count: int = DEFAULT_COCO_TEST_COUNT
+    coco_image_urls: dict[str, str] = field(default_factory=lambda: dict(COCO_IMAGE_URLS))
+
+
+@dataclass(frozen=True)
 class ProjectConfig:
     """Grouped project configuration."""
 
@@ -241,6 +263,7 @@ class ProjectConfig:
     training: TrainingConfig = field(default_factory=TrainingConfig)
     evaluation: EvaluationConfig = field(default_factory=EvaluationConfig)
     demo: DemoConfig = field(default_factory=DemoConfig)
+    dataset_prep: DatasetPrepConfig = field(default_factory=DatasetPrepConfig)
 
 
 DEFAULT_CONFIG = ProjectConfig()

@@ -74,6 +74,75 @@ Notes:
 - Validation and test use deterministic center crops for stable metrics.
 - Image tensors are normalized to `[0, 1]`.
 
+## Prepare COCO by Code
+
+You can build the dataset directly in Colab or on any machine without manually downloading on your PC first.
+
+Recommended lightweight Colab setup:
+
+- download only `val2017`
+- split it into `train`, `val`, and `test`
+- store everything in Google Drive
+
+Mount Drive in Colab:
+
+```python
+from google.colab import drive
+drive.mount("/content/drive")
+```
+
+Then run the prep utility from the project root:
+
+```bash
+python -m data.prepare_coco \
+  --download-split val2017 \
+  --raw-dir /content/drive/MyDrive/PyWatermark/raw \
+  --output-root /content/drive/MyDrive/PyWatermark/datasets \
+  --train-count 4000 \
+  --val-count 500 \
+  --test-count 500 \
+  --force
+```
+
+This downloads the official COCO `val2017.zip`, extracts it, and creates:
+
+```text
+/content/drive/MyDrive/PyWatermark/datasets/
+├── train/
+├── val/
+└── test/
+```
+
+Useful variants:
+
+- Limit the pool before splitting:
+
+```bash
+python -m data.prepare_coco \
+  --download-split val2017 \
+  --raw-dir /content/drive/MyDrive/PyWatermark/raw \
+  --output-root /content/drive/MyDrive/PyWatermark/datasets \
+  --max-images 2000 \
+  --train-count 1500 \
+  --val-count 250 \
+  --test-count 250 \
+  --force
+```
+
+- Split an already extracted image folder instead of downloading:
+
+```bash
+python -m data.prepare_coco \
+  --source-dir /content/drive/MyDrive/PyWatermark/raw/val2017 \
+  --output-root /content/drive/MyDrive/PyWatermark/datasets \
+  --train-count 4000 \
+  --val-count 500 \
+  --test-count 500 \
+  --force
+```
+
+When `--source-dir` is used, files are copied by default so the original image folder stays intact. When the utility downloads COCO itself, files are moved into `datasets/` by default to save space.
+
 ## Installation
 
 ```bash
@@ -215,6 +284,8 @@ Minimal notebooks are provided in:
 
 - [`notebooks/train_colab.ipynb`](notebooks/train_colab.ipynb)
 - [`notebooks/evaluate_colab.ipynb`](notebooks/evaluate_colab.ipynb)
+
+The training notebook now includes the dataset prep step, so you can mount Drive, download a small COCO subset by code, split it into `train/val/test`, and start training in one Colab workflow.
 
 Typical Colab storage pattern:
 
