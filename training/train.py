@@ -76,6 +76,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit-val-batches", type=int, default=None)
     parser.add_argument("--seed", type=int, default=DEFAULT_CONFIG.runtime.random_seed)
     parser.add_argument("--disable-amp", action="store_true")
+    parser.add_argument("--disable-attacks", action="store_true")
     parser.add_argument("--run-smoke-test", action="store_true")
     return parser.parse_args()
 
@@ -404,8 +405,9 @@ def train(args: argparse.Namespace) -> None:
         print_dataset_summary("test", datasets["test"], args.eval_batch_size)
 
     encoder, decoder = create_models(args.key_bits, device)
-    augmentor = RandomAugmentationPipeline().to(device)
+    augmentor = RandomAugmentationPipeline(enabled=not args.disable_attacks).to(device)
     loss_fn = WatermarkLoss().to(device)
+    print(f"Training attacks enabled: {not args.disable_attacks}")
     optimizer = Adam(
         list(encoder.parameters()) + list(decoder.parameters()),
         lr=args.learning_rate,

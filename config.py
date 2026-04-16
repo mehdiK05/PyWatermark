@@ -61,6 +61,7 @@ DEFAULT_SATURATION_JITTER = 0.15
 DEFAULT_HUE_JITTER = 0.03
 DEFAULT_NOISE_STD_MIN = 0.0
 DEFAULT_NOISE_STD_MAX = 0.03
+DEFAULT_ATTACKS_ENABLED = True
 
 EVAL_JPEG_QUALITY = 55
 EVAL_BLUR_SIGMA = 1.25
@@ -164,6 +165,7 @@ class DecoderConfig:
 class AugmentationConfig:
     """Defaults for differentiable robustness attacks used during training."""
 
+    enabled: bool = DEFAULT_ATTACKS_ENABLED
     jpeg_probability: float = DEFAULT_JPEG_PROBABILITY
     blur_probability: float = DEFAULT_BLUR_PROBABILITY
     crop_probability: float = DEFAULT_CROP_PROBABILITY

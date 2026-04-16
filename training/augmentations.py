@@ -155,12 +155,16 @@ def apply_gaussian_noise(image: Tensor, std: float) -> Tensor:
 class RandomAugmentationPipeline(nn.Module):
     """Compose a random subset of differentiable robustness attacks."""
 
-    def __init__(self) -> None:
+    def __init__(self, enabled: bool = DEFAULT_CONFIG.augmentations.enabled) -> None:
         super().__init__()
         self.config = DEFAULT_CONFIG.augmentations
+        self.enabled = enabled
 
     def forward(self, image: Tensor) -> Tensor:
         """Apply a random subset of configured attacks to an image batch."""
+
+        if not self.enabled:
+            return image
 
         attack_specs: list[tuple[str, float, AttackFn]] = [
             (
