@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+*.pt
+*.pth
+artifacts/
+tmp_artifacts/
+tmp_smoke_dataset/
+.ipynb_checkpoints/
