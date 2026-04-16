@@ -96,7 +96,9 @@ def apply_color_jitter(
 ) -> Tensor:
     """Apply differentiable color jitter, preferring Kornia when available."""
 
-    if K is not None:
+    # Kornia ColorJiggle has triggered CUDA scatter/gather device asserts on some
+    # Colab/T4 builds. Prefer the manual differentiable path on CUDA for stability.
+    if K is not None and image.device.type != "cuda":
         augmenter = K.ColorJiggle(
             brightness=brightness_jitter,
             contrast=contrast_jitter,

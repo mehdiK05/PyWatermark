@@ -44,5 +44,9 @@ def find_latest_checkpoint(checkpoint_dir: str | Path) -> Path | None:
     if not directory.exists():
         return None
 
+    preferred_latest = directory / "latest.pt"
+    if preferred_latest.exists():
+        return preferred_latest
+
     candidates = sorted(directory.glob("*.pt"), key=lambda candidate: candidate.stat().st_mtime, reverse=True)
     return candidates[0] if candidates else None
