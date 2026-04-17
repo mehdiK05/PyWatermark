@@ -13,9 +13,18 @@ from utils.metrics import structural_similarity
 class WatermarkLoss(nn.Module):
     """Combine invisibility and detection losses for watermark training."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        invisibility_weight: float = DEFAULT_CONFIG.losses.invisibility_weight,
+        detection_weight: float = DEFAULT_CONFIG.losses.detection_weight,
+        ssim_weight: float = DEFAULT_CONFIG.losses.ssim_weight,
+        l2_weight: float = DEFAULT_CONFIG.losses.l2_weight,
+    ) -> None:
         super().__init__()
-        self.config = DEFAULT_CONFIG.losses
+        self.invisibility_weight = invisibility_weight
+        self.detection_weight = detection_weight
+        self.ssim_weight = ssim_weight
+        self.l2_weight = l2_weight
         self.bce = nn.BCEWithLogitsLoss()
 
     def forward(
@@ -27,13 +36,14 @@ class WatermarkLoss(nn.Module):
     ) -> dict[str, Tensor]:
         """Return individual loss terms and the weighted total loss."""
 
-        ssim_term = 1.0 - structural_similarity(original_image, watermarked_image)
+        ssim_value = structural_similarity(original_image, watermarked_image).clamp(0.0, 1.0)
+        ssim_term = 1.0 - ssim_value
         l2_term = F.mse_loss(watermarked_image, original_image)
-        invisibility_loss = self.config.ssim_weight * ssim_term + self.config.l2_weight * l2_term
+        invisibility_loss = self.ssim_weight * ssim_term + self.l2_weight * l2_term
         detection_loss = self.bce(decoded_logits, target_key)
         total_loss = (
-            self.config.invisibility_weight * invisibility_loss
-            + self.config.detection_weight * detection_loss
+            self.invisibility_weight * invisibility_loss
+            + self.detection_weight * detection_loss
         )
 
         return {

@@ -13,6 +13,7 @@ from torch import Tensor, nn
 from torch.nn.utils import clip_grad_norm_
 from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.utils.data import Dataset, Subset
 from tqdm import tqdm
 
 from config import DEFAULT_CONFIG
@@ -64,9 +65,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-workers", type=int, default=DEFAULT_CONFIG.data.num_workers)
     parser.add_argument("--image-size", type=int, default=DEFAULT_CONFIG.data.image_size)
     parser.add_argument("--key-bits", type=int, default=DEFAULT_CONFIG.data.key_bits)
+    parser.add_argument("--encoder-alpha", type=float, default=DEFAULT_CONFIG.encoder.alpha)
     parser.add_argument("--learning-rate", type=float, default=DEFAULT_CONFIG.training.learning_rate)
     parser.add_argument("--weight-decay", type=float, default=DEFAULT_CONFIG.training.weight_decay)
     parser.add_argument("--grad-clip-norm", type=float, default=DEFAULT_CONFIG.training.grad_clip_norm)
+    parser.add_argument("--invisibility-weight", type=float, default=DEFAULT_CONFIG.losses.invisibility_weight)
+    parser.add_argument("--detection-weight", type=float, default=DEFAULT_CONFIG.losses.detection_weight)
+    parser.add_argument("--ssim-weight", type=float, default=DEFAULT_CONFIG.losses.ssim_weight)
+    parser.add_argument("--l2-weight", type=float, default=DEFAULT_CONFIG.losses.l2_weight)
     parser.add_argument("--resume", type=Path, default=None)
     parser.add_argument("--auto-resume", action="store_true")
     parser.add_argument("--save-every", type=int, default=DEFAULT_CONFIG.training.checkpoint_interval)
@@ -74,6 +80,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--image-log-interval", type=int, default=DEFAULT_CONFIG.training.image_log_interval)
     parser.add_argument("--limit-train-batches", type=int, default=None)
     parser.add_argument("--limit-val-batches", type=int, default=None)
+    parser.add_argument("--limit-train-images", type=int, default=None)
+    parser.add_argument("--limit-val-images", type=int, default=None)
+    parser.add_argument("--limit-test-images", type=int, default=None)
     parser.add_argument("--seed", type=int, default=DEFAULT_CONFIG.runtime.random_seed)
     parser.add_argument("--disable-amp", action="store_true")
     parser.add_argument("--disable-attacks", action="store_true")
@@ -105,6 +114,10 @@ def build_dataloaders(args: argparse.Namespace, device: torch.device) -> dict[st
         eval_key_seed=args.seed + 1,
         extensions=DEFAULT_CONFIG.data.extensions,
     )
+    datasets["train"] = maybe_limit_dataset(datasets["train"], args.limit_train_images, seed=args.seed)
+    datasets["val"] = maybe_limit_dataset(datasets["val"], args.limit_val_images, seed=args.seed + 1)
+    if "test" in datasets:
+        datasets["test"] = maybe_limit_dataset(datasets["test"], args.limit_test_images, seed=args.seed + 2)
     loaders = {
         "train": build_dataloader(
             datasets["train"],
@@ -138,10 +151,30 @@ def build_dataloaders(args: argparse.Namespace, device: torch.device) -> dict[st
     return {"datasets": datasets, "loaders": loaders}
 
 
-def create_models(key_bits: int, device: torch.device) -> tuple[WatermarkEncoder, WatermarkDecoder]:
+def maybe_limit_dataset(
+    dataset: Dataset[tuple[Tensor, Tensor]],
+    max_images: int | None,
+    seed: int,
+) -> Dataset[tuple[Tensor, Tensor]]:
+    """Return a deterministic subset view when an image limit is requested."""
+
+    if max_images is None or max_images <= 0 or max_images >= len(dataset):
+        return dataset
+
+    generator = torch.Generator()
+    generator.manual_seed(seed)
+    indices = torch.randperm(len(dataset), generator=generator)[:max_images].tolist()
+    return Subset(dataset, indices)
+
+
+def create_models(
+    key_bits: int,
+    encoder_alpha: float,
+    device: torch.device,
+) -> tuple[WatermarkEncoder, WatermarkDecoder]:
     """Instantiate the encoder and decoder models."""
 
-    encoder = WatermarkEncoder(key_bits=key_bits).to(device)
+    encoder = WatermarkEncoder(key_bits=key_bits, alpha=encoder_alpha).to(device)
     decoder = WatermarkDecoder(key_bits=key_bits).to(device)
     return encoder, decoder
 
@@ -404,10 +437,23 @@ def train(args: argparse.Namespace) -> None:
     if "test" in datasets:
         print_dataset_summary("test", datasets["test"], args.eval_batch_size)
 
-    encoder, decoder = create_models(args.key_bits, device)
+    encoder, decoder = create_models(args.key_bits, args.encoder_alpha, device)
     augmentor = RandomAugmentationPipeline(enabled=not args.disable_attacks).to(device)
-    loss_fn = WatermarkLoss().to(device)
+    loss_fn = WatermarkLoss(
+        invisibility_weight=args.invisibility_weight,
+        detection_weight=args.detection_weight,
+        ssim_weight=args.ssim_weight,
+        l2_weight=args.l2_weight,
+    ).to(device)
     print(f"Training attacks enabled: {not args.disable_attacks}")
+    print(
+        "Loss weights: "
+        f"invisibility={args.invisibility_weight}, "
+        f"detection={args.detection_weight}, "
+        f"ssim={args.ssim_weight}, "
+        f"l2={args.l2_weight}"
+    )
+    print(f"Encoder alpha: {args.encoder_alpha}")
     optimizer = Adam(
         list(encoder.parameters()) + list(decoder.parameters()),
         lr=args.learning_rate,
