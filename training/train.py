@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import time
 import warnings
 from pathlib import Path
@@ -48,6 +49,63 @@ class NullSummaryWriter:
 
     def close(self) -> None:
         """Close the no-op writer."""
+
+
+def append_epoch_history(
+    log_dir: Path,
+    epoch: int,
+    train_metrics: dict[str, float],
+    val_metrics: dict[str, float],
+    learning_rate: float,
+) -> Path:
+    """Append a row of epoch metrics to a CSV history file."""
+
+    ensure_directory(log_dir)
+    history_path = log_dir / "metrics_history.csv"
+    fieldnames = [
+        "epoch",
+        "learning_rate",
+        "train_total_loss",
+        "train_invisibility_loss",
+        "train_detection_loss",
+        "train_bit_accuracy",
+        "train_exact_match_accuracy",
+        "train_psnr",
+        "train_ssim",
+        "val_total_loss",
+        "val_invisibility_loss",
+        "val_detection_loss",
+        "val_bit_accuracy",
+        "val_exact_match_accuracy",
+        "val_psnr",
+        "val_ssim",
+    ]
+    row = {
+        "epoch": epoch,
+        "learning_rate": learning_rate,
+        "train_total_loss": train_metrics["total_loss"],
+        "train_invisibility_loss": train_metrics["invisibility_loss"],
+        "train_detection_loss": train_metrics["detection_loss"],
+        "train_bit_accuracy": train_metrics["bit_accuracy"],
+        "train_exact_match_accuracy": train_metrics["exact_match_accuracy"],
+        "train_psnr": train_metrics["psnr"],
+        "train_ssim": train_metrics["ssim"],
+        "val_total_loss": val_metrics["total_loss"],
+        "val_invisibility_loss": val_metrics["invisibility_loss"],
+        "val_detection_loss": val_metrics["detection_loss"],
+        "val_bit_accuracy": val_metrics["bit_accuracy"],
+        "val_exact_match_accuracy": val_metrics["exact_match_accuracy"],
+        "val_psnr": val_metrics["psnr"],
+        "val_ssim": val_metrics["ssim"],
+    }
+
+    write_header = not history_path.exists()
+    with history_path.open("a", newline="", encoding="utf-8") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        if write_header:
+            writer.writeheader()
+        writer.writerow(row)
+    return history_path
 
 
 def parse_args() -> argparse.Namespace:
@@ -534,6 +592,13 @@ def train(args: argparse.Namespace) -> None:
         for name, value in val_metrics.items():
             writer.add_scalar(f"val/{name}", value, epoch)
         writer.add_scalar("train/learning_rate", optimizer.param_groups[0]["lr"], epoch)
+        history_path = append_epoch_history(
+            log_dir=args.log_dir,
+            epoch=epoch,
+            train_metrics=train_metrics,
+            val_metrics=val_metrics,
+            learning_rate=float(optimizer.param_groups[0]["lr"]),
+        )
 
         print(
             f"Epoch {epoch:03d}/{args.epochs:03d} | "
@@ -568,6 +633,7 @@ def train(args: argparse.Namespace) -> None:
             print(f"Saved new best checkpoint: {args.checkpoint_dir / 'best.pt'}")
 
         print(f"Updated latest checkpoint: {latest_checkpoint}")
+        print(f"Updated metrics history: {history_path}")
 
     writer.close()
 

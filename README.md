@@ -205,6 +205,29 @@ TensorBoard:
 tensorboard --logdir artifacts/logs
 ```
 
+The trainer also writes a CSV history file at:
+
+```text
+artifacts/logs/metrics_history.csv
+```
+
+You can export report-ready PNG graphs from that history with:
+
+```bash
+python -m evaluation.plot_training_curves \
+  --history artifacts/logs/metrics_history.csv \
+  --output-dir artifacts/plots \
+  --title-prefix "PyWatermark"
+```
+
+This generates:
+
+- `loss_curve.png`
+- `bit_accuracy_curve.png`
+- `psnr_curve.png`
+- `ssim_curve.png`
+- `training_summary.png`
+
 ## Evaluation
 
 ```bash
@@ -319,6 +342,15 @@ python -m evaluation.evaluate \
   --report-dir /content/drive/MyDrive/PyWatermark/artifacts/reports \
   --batch-size 16 \
   --num-workers 2
+```
+
+Example Colab plot export command:
+
+```bash
+python -m evaluation.plot_training_curves \
+  --history /content/drive/MyDrive/PyWatermark/artifacts/logs/metrics_history.csv \
+  --output-dir /content/drive/MyDrive/PyWatermark/artifacts/plots \
+  --title-prefix "PyWatermark"
 ```
 
 ## Architecture Summary
