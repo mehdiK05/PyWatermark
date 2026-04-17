@@ -113,8 +113,13 @@ def extract_zip(archive_path: Path, extract_root: Path) -> Path:
             raise ValueError(f"Expected a single top-level directory in {archive_path}, found {top_level_names}.")
         output_dir = extract_root / top_level_names[0]
         if output_dir.exists():
-            print(f"Using existing extracted directory: {output_dir.resolve()}")
-            return output_dir
+            existing_files = [path for path in output_dir.rglob("*") if path.is_file()]
+            if existing_files:
+                print(f"Using existing extracted directory: {output_dir.resolve()}")
+                return output_dir
+
+            print(f"Existing extracted directory is empty, re-extracting: {output_dir.resolve()}")
+            shutil.rmtree(output_dir)
 
         print(f"Extracting {archive_path.name} into {extract_root.resolve()}")
         archive.extractall(extract_root)
@@ -125,11 +130,21 @@ def collect_image_paths(source_dir: Path) -> list[Path]:
     """Collect image paths recursively from a directory."""
 
     supported_extensions = set(DEFAULT_CONFIG.data.extensions)
+    candidate_root = source_dir
     image_paths = [
         path
-        for path in source_dir.rglob("*")
+        for path in candidate_root.rglob("*")
         if path.is_file() and path.suffix.lower() in supported_extensions
     ]
+    if not image_paths:
+        child_directories = [path for path in source_dir.iterdir() if path.is_dir()]
+        if len(child_directories) == 1:
+            candidate_root = child_directories[0]
+            image_paths = [
+                path
+                for path in candidate_root.rglob("*")
+                if path.is_file() and path.suffix.lower() in supported_extensions
+            ]
     image_paths.sort()
     if not image_paths:
         raise FileNotFoundError(f"No supported images were found in: {source_dir}")
