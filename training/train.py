@@ -124,6 +124,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--image-size", type=int, default=DEFAULT_CONFIG.data.image_size)
     parser.add_argument("--key-bits", type=int, default=DEFAULT_CONFIG.data.key_bits)
     parser.add_argument("--encoder-alpha", type=float, default=DEFAULT_CONFIG.encoder.alpha)
+    parser.add_argument("--encoder-base-channels", type=int, default=DEFAULT_CONFIG.encoder.base_channels)
+    parser.add_argument("--decoder-base-channels", type=int, default=DEFAULT_CONFIG.decoder.base_channels)
     parser.add_argument("--learning-rate", type=float, default=DEFAULT_CONFIG.training.learning_rate)
     parser.add_argument("--weight-decay", type=float, default=DEFAULT_CONFIG.training.weight_decay)
     parser.add_argument("--grad-clip-norm", type=float, default=DEFAULT_CONFIG.training.grad_clip_norm)
@@ -228,12 +230,21 @@ def maybe_limit_dataset(
 def create_models(
     key_bits: int,
     encoder_alpha: float,
+    encoder_base_channels: int,
+    decoder_base_channels: int,
     device: torch.device,
 ) -> tuple[WatermarkEncoder, WatermarkDecoder]:
     """Instantiate the encoder and decoder models."""
 
-    encoder = WatermarkEncoder(key_bits=key_bits, alpha=encoder_alpha).to(device)
-    decoder = WatermarkDecoder(key_bits=key_bits).to(device)
+    encoder = WatermarkEncoder(
+        key_bits=key_bits,
+        alpha=encoder_alpha,
+        base_channels=encoder_base_channels,
+    ).to(device)
+    decoder = WatermarkDecoder(
+        key_bits=key_bits,
+        base_channels=decoder_base_channels,
+    ).to(device)
     return encoder, decoder
 
 
@@ -425,6 +436,9 @@ def checkpoint_payload(
         "key_bits": args.key_bits,
         "image_size": args.image_size,
         "seed": args.seed,
+        "encoder_alpha": args.encoder_alpha,
+        "encoder_base_channels": args.encoder_base_channels,
+        "decoder_base_channels": args.decoder_base_channels,
     }
 
 
@@ -462,6 +476,22 @@ def maybe_resume_training(
     return start_epoch, best_val_bit_accuracy, global_step
 
 
+def maybe_adopt_model_hparams_from_resume(args: argparse.Namespace) -> None:
+    """Adopt checkpoint-defined model hyperparameters before model construction."""
+
+    checkpoint_path = args.resume
+    if checkpoint_path is None and args.auto_resume:
+        checkpoint_path = find_latest_checkpoint(args.checkpoint_dir)
+    if checkpoint_path is None:
+        return
+
+    checkpoint = load_checkpoint(checkpoint_path, map_location="cpu")
+    args.key_bits = int(checkpoint.get("key_bits", args.key_bits))
+    args.encoder_alpha = float(checkpoint.get("encoder_alpha", args.encoder_alpha))
+    args.encoder_base_channels = int(checkpoint.get("encoder_base_channels", args.encoder_base_channels))
+    args.decoder_base_channels = int(checkpoint.get("decoder_base_channels", args.decoder_base_channels))
+
+
 def print_dataset_summary(split_name: str, dataset: Any, batch_size: int) -> None:
     """Print a concise summary for a dataset split."""
 
@@ -486,6 +516,7 @@ def train(args: argparse.Namespace) -> None:
 
     ensure_directory(args.checkpoint_dir)
     writer = create_summary_writer(args.log_dir)
+    maybe_adopt_model_hparams_from_resume(args)
     dataloader_bundle = build_dataloaders(args, device)
     datasets = dataloader_bundle["datasets"]
     loaders = dataloader_bundle["loaders"]
@@ -495,7 +526,13 @@ def train(args: argparse.Namespace) -> None:
     if "test" in datasets:
         print_dataset_summary("test", datasets["test"], args.eval_batch_size)
 
-    encoder, decoder = create_models(args.key_bits, args.encoder_alpha, device)
+    encoder, decoder = create_models(
+        key_bits=args.key_bits,
+        encoder_alpha=args.encoder_alpha,
+        encoder_base_channels=args.encoder_base_channels,
+        decoder_base_channels=args.decoder_base_channels,
+        device=device,
+    )
     augmentor = RandomAugmentationPipeline(enabled=not args.disable_attacks).to(device)
     loss_fn = WatermarkLoss(
         invisibility_weight=args.invisibility_weight,
@@ -512,6 +549,11 @@ def train(args: argparse.Namespace) -> None:
         f"l2={args.l2_weight}"
     )
     print(f"Encoder alpha: {args.encoder_alpha}")
+    print(
+        "Model capacity: "
+        f"encoder_base_channels={args.encoder_base_channels}, "
+        f"decoder_base_channels={args.decoder_base_channels}"
+    )
     optimizer = Adam(
         list(encoder.parameters()) + list(decoder.parameters()),
         lr=args.learning_rate,
