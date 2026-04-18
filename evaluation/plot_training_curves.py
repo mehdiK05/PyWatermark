@@ -33,7 +33,23 @@ def read_history(path: Path) -> dict[str, list[float]]:
                 data[field].append(float(row[field]))
     if not data["epoch"]:
         raise ValueError(f"No rows found in history file: {path}")
-    return data
+    ordered_rows = sorted(
+        (
+            {field: data[field][index] for field in reader.fieldnames}
+            for index in range(len(data["epoch"]))
+        ),
+        key=lambda row: (row["epoch"]),
+    )
+    deduplicated_rows: dict[int, dict[str, float]] = {}
+    for row in ordered_rows:
+        deduplicated_rows[int(row["epoch"])] = row
+
+    normalized = {field: [] for field in reader.fieldnames}
+    for epoch in sorted(deduplicated_rows):
+        row = deduplicated_rows[epoch]
+        for field in reader.fieldnames:
+            normalized[field].append(row[field])
+    return normalized
 
 
 def save_line_plot(
