@@ -1,147 +1,74 @@
-# PyWatermark
+# Mimicry
 
-PyWatermark is a from-scratch invisible image watermarking system in PyTorch, built as a compact research-style project inspired by SynthID-style training loops: an encoder hides a binary key inside an image, a decoder recovers the key after differentiable distortions, and the system is trained end-to-end for a quality/robustness tradeoff.
+Mimicry is a compact, from-scratch invisible image watermarking project in PyTorch. The goal is not to reproduce Google SynthID exactly, but to build an honest, inspectable approximation of the same broad idea: an encoder hides a binary key inside an image, a decoder attempts to recover that key after common distortions, and the whole system is trained end-to-end around the tradeoff between robustness and image fidelity.
 
-The repository is designed to be:
+The repo now reflects the final project state:
 
-- runnable on CPU for debugging
-- GPU-friendly for training
-- Colab-friendly for longer runs
-- clean enough to serve as a portfolio project rather than a one-off experiment
+- final robust checkpoint stored in `artifacts/checkpoints/best.pt`
+- final evaluation report in `artifacts/report/evaluation_report.txt`
+- final training plots in `artifacts/results/`
+- paper source in `paper/`
 
-## Features
+## Final Result
 
-- Centralized configuration in [`config.py`](config.py)
-- Recursive image datasets with `train/`, `val/`, and `test/` splits
-- Fresh random binary keys during training
-- Deterministic keys and center crops for validation and test
-- UNet-lite encoder with bottleneck key injection and bounded residual output
-- Lightweight ResNet-style decoder with 4 residual blocks
-- Differentiable robustness pipeline:
-  Gaussian blur, crop/resize, color jitter, Gaussian noise, and JPEG-style compression approximation
-- End-to-end training with:
-  Adam, gradient clipping, `ReduceLROnPlateau`, checkpoints, resume, TensorBoard, and image previews
-- OOM-aware batch-size fallback during training
-- Evaluation script with robustness table and false-positive / wrong-key diagnostics
-- CLI for embedding and detecting watermarks
-- Gradio demo with embed and detect tabs
-- Minimal Colab notebooks for training and evaluation
+Final test evaluation for the robust 16-bit checkpoint:
 
-## Project Layout
+- average attacked bit accuracy: `0.6465`
+- clean bit accuracy: `0.6528`
+- JPEG bit accuracy: `0.6536`
+- blur bit accuracy: `0.6472`
+- crop bit accuracy: `0.6300`
+- noise bit accuracy: `0.6503`
+- brightness bit accuracy: `0.6450`
+- PSNR: `23.52 dB`
+- SSIM: `0.8642`
+
+This is a robustness-first result. The model is clearly above random decoding, but it does not achieve perfect key recovery and still shows the expected robustness-quality tradeoff.
+
+## Repository Layout
 
 ```text
-PyWatermark/
-├── cli.py
-├── config.py
+Mimicry/
+├── artifacts/
+│   ├── checkpoints/
+│   │   └── best.pt
+│   ├── report/
+│   │   └── evaluation_report.txt
+│   └── results/
+│       ├── bit_accuracy_curve.png
+│       ├── loss_curve.png
+│       ├── psnr_curve.png
+│       ├── ssim_curve.png
+│       └── training_summary.png
 ├── data/
 ├── demo/
 ├── evaluation/
 ├── models/
 ├── notebooks/
+├── paper/
 ├── training/
 ├── utils/
-├── requirements.txt
-└── README.md
+├── cli.py
+├── config.py
+└── requirements.txt
 ```
 
-## Dataset Layout
+## Core Components
 
-Expected directory structure:
-
-```text
-datasets/
-├── train/
-│   ├── image_0001.png
-│   └── nested_folder/sample.jpg
-├── val/
-│   └── image_0100.png
-└── test/
-    └── image_0200.png
-```
-
-Supported extensions:
-
-- `.jpg`
-- `.jpeg`
-- `.png`
-- `.bmp`
-- `.webp`
-
-Notes:
-
-- Images are converted to RGB and resized only when needed to allow valid cropping.
-- Training uses random square crops.
-- Validation and test use deterministic center crops for stable metrics.
-- Image tensors are normalized to `[0, 1]`.
-
-## Prepare COCO by Code
-
-You can build the dataset directly in Colab or on any machine without manually downloading on your PC first.
-
-Recommended lightweight Colab setup:
-
-- download only `val2017`
-- split it into `train`, `val`, and `test`
-- store everything in Google Drive
-
-Mount Drive in Colab:
-
-```python
-from google.colab import drive
-drive.mount("/content/drive")
-```
-
-Then run the prep utility from the project root:
-
-```bash
-python -m data.prepare_coco \
-  --download-split val2017 \
-  --raw-dir /content/drive/MyDrive/PyWatermark/raw \
-  --output-root /content/drive/MyDrive/PyWatermark/datasets \
-  --train-count 4000 \
-  --val-count 500 \
-  --test-count 500 \
-  --force
-```
-
-This downloads the official COCO `val2017.zip`, extracts it, and creates:
-
-```text
-/content/drive/MyDrive/PyWatermark/datasets/
-├── train/
-├── val/
-└── test/
-```
-
-Useful variants:
-
-- Limit the pool before splitting:
-
-```bash
-python -m data.prepare_coco \
-  --download-split val2017 \
-  --raw-dir /content/drive/MyDrive/PyWatermark/raw \
-  --output-root /content/drive/MyDrive/PyWatermark/datasets \
-  --max-images 2000 \
-  --train-count 1500 \
-  --val-count 250 \
-  --test-count 250 \
-  --force
-```
-
-- Split an already extracted image folder instead of downloading:
-
-```bash
-python -m data.prepare_coco \
-  --source-dir /content/drive/MyDrive/PyWatermark/raw/val2017 \
-  --output-root /content/drive/MyDrive/PyWatermark/datasets \
-  --train-count 4000 \
-  --val-count 500 \
-  --test-count 500 \
-  --force
-```
-
-When `--source-dir` is used, files are copied by default so the original image folder stays intact. When the utility downloads COCO itself, files are moved into `datasets/` by default to save space.
+- `models/encoder.py`
+  UNet-lite encoder that injects a binary key at the bottleneck and outputs a bounded residual.
+- `models/decoder.py`
+  Lightweight ResNet-style decoder that predicts watermark bits from an image.
+- `training/augmentations.py`
+  Differentiable attacks used during robust training, including JPEG-style compression, blur, crop-resize, color jitter, and Gaussian noise.
+- `training/train.py`
+  Main training script with checkpointing, resume support, CSV history logging, and configurable loss weights.
+- `evaluation/evaluate.py`
+  Test-set evaluator that reports image quality, attack robustness, and false-positive / wrong-key diagnostics.
+- `evaluation/plot_training_curves.py`
+  Utility that generates report-ready PNG plots from `metrics_history.csv`.
+- `demo/app.py`
+  Gradio demo for interactive embedding and detection.
 
 ## Installation
 
@@ -151,95 +78,69 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-Linux/macOS activation:
+On Linux/macOS:
 
 ```bash
 source .venv/bin/activate
 ```
 
-## Training
+## Run the Demo
 
-Local training:
-
-```bash
-python -m training.train \
-  --train-dir datasets/train \
-  --val-dir datasets/val \
-  --test-dir datasets/test \
-  --checkpoint-dir artifacts/checkpoints \
-  --log-dir artifacts/logs \
-  --epochs 20 \
-  --train-batch-size 8 \
-  --eval-batch-size 8 \
-  --num-workers 0
-```
-
-Resume from the latest checkpoint:
+The local final checkpoint is already placed where the demo expects it.
 
 ```bash
-python -m training.train \
-  --train-dir datasets/train \
-  --val-dir datasets/val \
-  --test-dir datasets/test \
-  --checkpoint-dir artifacts/checkpoints \
-  --log-dir artifacts/logs \
-  --auto-resume
+python -m demo.app --no-share
 ```
 
-CPU smoke test:
+If you want to be explicit:
 
 ```bash
-python -m training.train \
-  --train-dir datasets/train \
-  --val-dir datasets/val \
-  --test-dir datasets/test \
-  --num-workers 0 \
-  --train-batch-size 2 \
-  --eval-batch-size 2 \
-  --run-smoke-test
+python -m demo.app --checkpoint artifacts/checkpoints/best.pt --no-share
 ```
 
-TensorBoard:
+Then open:
+
+- `http://127.0.0.1:7860`
+- or `http://localhost:7860`
+
+If you are on a remote VS Code / Codespaces environment, forward port `7860` and open the forwarded URL.
+
+## CLI Usage
+
+Embed a watermark:
 
 ```bash
-tensorboard --logdir artifacts/logs
+python cli.py embed ^
+  --checkpoint artifacts/checkpoints/best.pt ^
+  --input path\to\input.png ^
+  --output artifacts\outputs\watermarked.png
 ```
 
-The trainer also writes a CSV history file at:
-
-```text
-artifacts/logs/metrics_history.csv
-```
-
-You can export report-ready PNG graphs from that history with:
+Detect a watermark:
 
 ```bash
-python -m evaluation.plot_training_curves \
-  --history artifacts/logs/metrics_history.csv \
-  --output-dir artifacts/plots \
-  --title-prefix "PyWatermark"
+python cli.py detect ^
+  --checkpoint artifacts/checkpoints/best.pt ^
+  --input artifacts\outputs\watermarked.png
 ```
 
-This generates:
+Important:
 
-- `loss_curve.png`
-- `bit_accuracy_curve.png`
-- `psnr_curve.png`
-- `ssim_curve.png`
-- `training_summary.png`
+- the checkpoint currently uses a `16`-bit payload
+- the CLI and demo resize inputs to the model resolution (`128x128`)
+- the expected key for accuracy checks must be the original embedded key, not the decoder output
 
-## Evaluation
+## Training Summary
 
-```bash
-python -m evaluation.evaluate \
-  --test-dir datasets/test \
-  --checkpoint artifacts/checkpoints/best.pt \
-  --report-dir artifacts/reports \
-  --batch-size 8 \
-  --num-workers 0
-```
+The final reported model came from a staged robust training process:
 
-This prints a report and saves `artifacts/reports/evaluation_report.txt`.
+1. a clean bootstrap phase without attacks
+2. a robust training phase with differentiable distortions
+3. a stronger robustness-focused continuation phase with higher detection pressure and reduced invisibility emphasis
+
+This change in objective explains the visible jump in training loss around the later epochs in the saved plots. The jump is not a plotting error or collapse; it marks a regime change where the model began favoring watermark recoverability more aggressively, with a corresponding drop in perceptual quality.
+
+## Evaluation Summary
 
 The evaluator reports:
 
@@ -247,165 +148,57 @@ The evaluator reports:
 - exact match accuracy
 - PSNR
 - SSIM
-- robustness on clean / JPEG / blur / crop / noise / brightness
-- false-positive behavior on non-watermarked images
+- robustness under clean, JPEG, blur, crop, noise, and brightness shifts
+- false-positive behavior on original images
 - wrong-key behavior on watermarked images
 
-## CLI
+`Exact match` is near zero in the final model because full `16/16` bit recovery remains much harder than partial recovery. The model often recovers a majority of bits correctly without achieving a perfect full-key decode.
 
-Embed a watermark:
+## Notebooks
 
-```bash
-python cli.py embed \
-  --checkpoint artifacts/checkpoints/best.pt \
-  --input path/to/input.png \
-  --output artifacts/outputs/watermarked.png \
-  --key 010101010101010101010101010101010101010101010101
-```
+Two Colab notebooks are included:
 
-Embed with a generated random key:
+- `notebooks/train_colab.ipynb`
+- `notebooks/evaluate_colab.ipynb`
 
-```bash
-python cli.py embed \
-  --checkpoint artifacts/checkpoints/best.pt \
-  --input path/to/input.png \
-  --output artifacts/outputs/watermarked.png
-```
+They are now written as clean experiment notebooks rather than debugging logs:
 
-Detect from a watermarked image:
+- training notebook: dataset prep, environment setup, clean bootstrap, robust training, and plot export
+- evaluation notebook: checkpoint evaluation, report display, compact metric summary, and plot export
 
-```bash
-python cli.py detect \
-  --checkpoint artifacts/checkpoints/best.pt \
-  --input artifacts/outputs/watermarked.png
-```
+## Paper
 
-Detect against an expected key:
+The report source lives in:
 
-```bash
-python cli.py detect \
-  --checkpoint artifacts/checkpoints/best.pt \
-  --input artifacts/outputs/watermarked.png \
-  --key 010101010101010101010101010101010101010101010101
-```
+- `paper/main.tex`
 
-## Gradio Demo
+It uses the final figures from `artifacts/results/` and documents:
 
-```bash
-python -m demo.app --checkpoint artifacts/checkpoints/best.pt
-```
-
-Default behavior launches with `share=True` for Colab-friendly usage. Disable sharing locally with:
-
-```bash
-python -m demo.app --checkpoint artifacts/checkpoints/best.pt --no-share
-```
-
-## Colab Workflow
-
-Minimal notebooks are provided in:
-
-- [`notebooks/train_colab.ipynb`](notebooks/train_colab.ipynb)
-- [`notebooks/evaluate_colab.ipynb`](notebooks/evaluate_colab.ipynb)
-
-The training notebook now includes the dataset prep step, so you can mount Drive, download a small COCO subset by code, split it into `train/val/test`, and start training in one Colab workflow.
-
-Typical Colab storage pattern:
-
-- dataset in `/content/drive/MyDrive/PyWatermark/datasets/...`
-- checkpoints in `/content/drive/MyDrive/PyWatermark/artifacts/checkpoints`
-- logs in `/content/drive/MyDrive/PyWatermark/artifacts/logs`
-- reports in `/content/drive/MyDrive/PyWatermark/artifacts/reports`
-
-Example Colab training command:
-
-```bash
-python -m training.train \
-  --train-dir /content/drive/MyDrive/PyWatermark/datasets/train \
-  --val-dir /content/drive/MyDrive/PyWatermark/datasets/val \
-  --test-dir /content/drive/MyDrive/PyWatermark/datasets/test \
-  --checkpoint-dir /content/drive/MyDrive/PyWatermark/artifacts/checkpoints \
-  --log-dir /content/drive/MyDrive/PyWatermark/artifacts/logs \
-  --epochs 50 \
-  --train-batch-size 16 \
-  --eval-batch-size 16 \
-  --num-workers 2 \
-  --auto-resume
-```
-
-Example Colab evaluation command:
-
-```bash
-python -m evaluation.evaluate \
-  --test-dir /content/drive/MyDrive/PyWatermark/datasets/test \
-  --checkpoint /content/drive/MyDrive/PyWatermark/artifacts/checkpoints/best.pt \
-  --report-dir /content/drive/MyDrive/PyWatermark/artifacts/reports \
-  --batch-size 16 \
-  --num-workers 2
-```
-
-Example Colab plot export command:
-
-```bash
-python -m evaluation.plot_training_curves \
-  --history /content/drive/MyDrive/PyWatermark/artifacts/logs/metrics_history.csv \
-  --output-dir /content/drive/MyDrive/PyWatermark/artifacts/plots \
-  --title-prefix "PyWatermark"
-```
-
-## Architecture Summary
-
-Encoder:
-
-- 3 down blocks
-- key injection at the bottleneck by spatial broadcast + channel concatenation
-- 3 up blocks with skip connections
-- residual head with `tanh` bounded by `alpha`
-- final watermarked image is `clamp(original + residual, 0, 1)`
-
-Decoder:
-
-- convolutional stem
-- 4 residual blocks
-- downsampling after blocks 2 and 4
-- global average pooling
-- fully connected projection to `N` watermark bits
-
-Loss:
-
-- invisibility loss = `(1 - SSIM) + L2`, with configurable weighting
-- detection loss = BCE over watermark bits
-- total loss = weighted sum of invisibility and detection terms
-
-## Key Assumptions
-
-- The model operates on square images of a fixed training size set in `config.py`.
-- Validation and test use deterministic center crops for stable metrics.
-- The implemented JPEG attack is a differentiable JPEG-style approximation based on resize + quantization, which keeps gradients flowing without relying on an external pretrained watermarking package.
-- Wrong-key evaluation compares decoded watermark bits against the complemented key vector.
-- Detection is decoder-based: the decoder predicts watermark bits directly, and optional key comparison is done outside the network.
-- If TensorBoard is unavailable, training still runs with logging disabled rather than crashing.
+- project motivation
+- architecture
+- training setup
+- final results
+- failure modes and limitations
+- likely causes of remaining accuracy loss
+- future work
 
 ## Known Limitations
 
-- This is a compact baseline, not a reproduction of SynthID internals.
-- CLI and demo inference resize inputs to the model training resolution; they do not preserve arbitrary original resolutions.
-- Robustness quality depends heavily on actual training time and dataset diversity.
-- The OOM fallback reduces batch size and retries the epoch, but it does not dynamically rebalance other hyperparameters such as learning rate.
-- If `kornia` is not installed, color jitter falls back to a manual differentiable implementation.
+- Mimicry is inspired by SynthID, not a faithful reproduction of Google’s internal system.
+- The final robust model is moderate rather than state-of-the-art.
+- Crop robustness remains weaker than other tested distortions.
+- The final checkpoint preserves some robustness, but exact full-key recovery is still rare.
+- Evaluation and demo inference operate on resized square images rather than arbitrary original resolutions.
 
-## What To Run on GPU vs CPU
+## Next Research Directions
 
-GPU recommended:
+- select `best.pt` using robust validation rather than clean validation
+- expand decoder capacity further
+- explore smaller payloads such as `8` bits for stronger clean recovery
+- improve crop robustness specifically
+- train on larger and more diverse datasets
+- add stronger perceptual losses and better scheduling curricula
 
-- full training
-- longer validation/evaluation runs on larger datasets
-- demo hosting with repeated inference under load
+## License / Attribution
 
-CPU is fine for:
-
-- import checks
-- forward-pass debugging
-- one-batch smoke tests
-- CLI sanity checks
-- very small evaluation subsets
+This project is an independent educational and research-style implementation. It is best described as a SynthID-inspired mimic rather than an official reproduction.

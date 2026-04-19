@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-PROJECT_NAME = "PyWatermark"
-PROJECT_DESCRIPTION = "Invisible image watermarking in PyTorch"
+PROJECT_NAME = "Mimicry"
+PROJECT_DESCRIPTION = "A SynthID-inspired invisible image watermarking system in PyTorch"
 
 DEFAULT_IMAGE_SIZE = 128
 DEFAULT_IMAGE_CHANNELS = 3

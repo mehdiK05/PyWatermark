@@ -1,0 +1,207 @@
+\documentclass[11pt]{article}
+
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{float}
+\usepackage{enumitem}
+\usepackage{xcolor}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  urlcolor=blue,
+  citecolor=blue
+}
+
+\title{Mimicry: A SynthID-Inspired Invisible Image Watermarking System}
+\author{Mehdi}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Mimicry is a compact invisible image watermarking system implemented in PyTorch and designed as an honest, research-style attempt to mimic the broad training philosophy of Google SynthID. The project couples an encoder, which hides a binary key inside an image, with a decoder, which attempts to recover that key after image degradations. The final system was trained with a staged pipeline that moved from clean supervision to robustness-focused optimization under differentiable attacks. On the final robust 16-bit checkpoint, Mimicry achieved an average attacked bit accuracy of 0.6465 across clean, JPEG, blur, crop, noise, and brightness conditions, with 23.52 dB PSNR and 0.8642 SSIM on the held-out test split. The results show meaningful above-random watermark recovery, but also expose the central robustness-quality tradeoff and the gap between partial bit recovery and exact full-key recovery.
+\end{abstract}
+
+\section{Introduction}
+Invisible watermarking aims to encode information into an image in a way that remains visually unobtrusive while still being recoverable after common post-processing operations. The practical challenge is that robustness and imperceptibility pull in opposite directions: a stronger watermark is easier to recover, but also easier to see or more likely to degrade image quality.
+
+Mimicry was built as a small, inspectable system inspired by the public idea of SynthID-style training rather than as a claim of faithful reproduction. The goal was to implement the core ingredients from scratch:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item an encoder that writes a binary watermark into an image,
+  \item a decoder that predicts the hidden key,
+  \item a differentiable augmentation pipeline that simulates distortions during training,
+  \item and an evaluation protocol that separates image quality from robustness.
+\end{itemize}
+
+\section{Method}
+\subsection{Architecture}
+The system consists of two neural networks.
+
+\textbf{Encoder.} The encoder is a UNet-lite architecture with three downsampling blocks and three upsampling blocks. The binary watermark key is spatially broadcast and concatenated at the bottleneck. The model predicts a residual image bounded by a scaled hyperbolic tangent, and the final watermarked image is produced by adding the residual to the original image followed by clamping to $[0,1]$.
+
+\textbf{Decoder.} The decoder is a lightweight ResNet-style network with a convolutional stem, four residual blocks, two downsampling stages, global average pooling, and a final linear projection to watermark logits.
+
+\subsection{Training Objective}
+The training loss combines two terms:
+
+\begin{equation}
+\mathcal{L}_{total} = \lambda_{inv} \mathcal{L}_{inv} + \lambda_{det} \mathcal{L}_{det}
+\end{equation}
+
+where:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item $\mathcal{L}_{inv}$ is the invisibility term, implemented as a weighted combination of $(1 - \mathrm{SSIM})$ and L2 reconstruction,
+  \item $\mathcal{L}_{det}$ is the binary cross-entropy loss between predicted watermark logits and target bits.
+\end{itemize}
+
+\subsection{Attack Model}
+During robust training, the watermarked image may be passed through differentiable approximations of:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item JPEG compression,
+  \item Gaussian blur,
+  \item crop-resize,
+  \item color jitter,
+  \item additive Gaussian noise.
+\end{itemize}
+
+\section{Experimental Setup}
+\subsection{Data}
+The experiments used a lightweight COCO-based split:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item 4000 training images,
+  \item 500 validation images,
+  \item 500 test images.
+\end{itemize}
+
+Images were cropped to a fixed resolution of $128 \times 128$.
+
+\subsection{Training Stages}
+The final reported checkpoint came from a staged training process:
+
+\begin{enumerate}[leftmargin=1.5em]
+  \item \textbf{Clean bootstrap.} A no-attack training phase established the basic embedding and decoding behavior.
+  \item \textbf{Robust stage 1.} Attacks were enabled while keeping the optimization relatively balanced.
+  \item \textbf{Robustness-focused continuation.} The watermark strength and detection weight were increased, while invisibility pressure was reduced.
+\end{enumerate}
+
+This last regime change is visible in the training plots as a sharp jump in loss followed by renewed optimization. That jump is not a bug. It reflects a real change in the objective scale after the model was pushed into a stronger robustness-first operating point.
+
+\subsection{Payload}
+The final reported model used a 16-bit payload. That means each image carries a binary vector of length 16, and the decoder predicts 16 probabilities which are thresholded to bits during evaluation.
+
+\section{Results}
+\subsection{Quantitative Evaluation}
+The final robust checkpoint achieved the following test-set results:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lcc}
+\toprule
+Condition & Bit Accuracy & Exact Match \\
+\midrule
+Clean & 0.6528 & 0.0020 \\
+JPEG & 0.6536 & 0.0000 \\
+Blur & 0.6472 & 0.0000 \\
+Crop & 0.6300 & 0.0020 \\
+Noise & 0.6503 & 0.0020 \\
+Brightness & 0.6450 & 0.0000 \\
+\midrule
+Average & 0.6465 & 0.0010 \\
+\bottomrule
+\end{tabular}
+\caption{Final robustness evaluation for the selected 16-bit checkpoint.}
+\end{table}
+
+Image-quality metrics for the same checkpoint were:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item PSNR: 23.52 dB
+  \item SSIM: 0.8642
+\end{itemize}
+
+\subsection{Training Curves}
+Figure~\ref{fig:summary} summarizes the main training metrics. Figure~\ref{fig:bitacc} isolates watermark bit accuracy.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\textwidth]{../artifacts/results/training_summary.png}
+  \caption{Training summary for the final robust 16-bit run. The jump in loss marks the transition into a stronger robustness-focused regime.}
+  \label{fig:summary}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\textwidth]{../artifacts/results/bit_accuracy_curve.png}
+  \caption{Train and validation bit accuracy across epochs. Accuracy improves steadily even after the regime change.}
+  \label{fig:bitacc}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\textwidth]{../artifacts/results/loss_curve.png}
+  \caption{Loss curve across epochs. The large increase after the earlier epochs reflects a deliberate change in loss weighting rather than numeric instability.}
+  \label{fig:loss}
+\end{figure}
+
+\section{Discussion}
+\subsection{What Worked}
+The final model is clearly above random guessing. Since the watermark payload is binary, a random decoder would remain near 0.50 bit accuracy. Mimicry reaches roughly 0.65 across several distortions, which means the system learned a meaningful watermark signal rather than collapsing entirely.
+
+The model also behaves consistently across the evaluated attack types. JPEG, noise, and brightness are slightly stronger than blur and crop, but the spread is not extreme. This suggests that the learned representation is not narrowly specialized to one single attack family.
+
+\subsection{What Did Not Work}
+The system does not reach strong exact-key recovery. Exact match remains near zero, because recovering all 16 bits correctly for a single image is still much harder than recovering a majority of them. In practice, Mimicry demonstrates partial watermark recovery much more reliably than perfect full-key reconstruction.
+
+The model also pays a substantial image-quality price for its robustness gains. The final PSNR and SSIM indicate a noticeable drop in perceptual fidelity compared with earlier, milder checkpoints.
+
+\subsection{Why the Final Test Accuracy Is Lower Than Peak Validation Impressions}
+Several factors likely contribute to the gap between encouraging training-time validation behavior and the final held-out evaluation:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \textbf{Checkpoint selection mismatch.} The training loop selected the best checkpoint using clean validation bit accuracy rather than attacked validation accuracy.
+  \item \textbf{Payload difficulty.} A 16-bit payload is still demanding for a compact model at $128 \times 128$.
+  \item \textbf{Model capacity.} The encoder and decoder remain relatively small.
+  \item \textbf{Dataset scale.} A 4000-image training split is practical for Colab, but small for a robustness-heavy watermarking problem.
+  \item \textbf{Attack diversity.} The augmentation mix is useful, but may still be suboptimal for the exact robustness profile tested at evaluation.
+\end{itemize}
+
+\section{Limitations}
+This project has several limitations:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item It is inspired by SynthID, not a faithful reproduction of Google's internal method.
+  \item It uses fixed-size square crops and does not preserve arbitrary original image resolution in inference.
+  \item The final model demonstrates moderate rather than strong robustness.
+  \item Exact full-key recovery is still rare.
+  \item Crop robustness remains the weakest tested condition.
+\end{itemize}
+
+\section{Future Work}
+The most promising follow-up directions are:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item selecting checkpoints using attacked validation mean instead of clean validation only,
+  \item increasing decoder capacity further,
+  \item exploring smaller payloads such as 8 bits for higher clean reliability,
+  \item improving crop-specific robustness,
+  \item training on larger and more diverse image collections,
+  \item and using a more deliberate training curriculum with progressively harder attacks.
+\end{itemize}
+
+\section{Conclusion}
+Mimicry demonstrates that a small, fully inspectable PyTorch system can learn a non-trivial invisible watermarking behavior under common distortions. The final model does not match the robustness one would expect from a production-grade watermarking system, but it succeeds as an honest SynthID-inspired research implementation. The experiments clearly expose the core tradeoff: increasing recoverability improves robustness, but pushes image quality downward. In that sense, Mimicry achieves its main goal: it makes the watermarking problem concrete, measurable, and extensible for future work.
+
+\end{document}
