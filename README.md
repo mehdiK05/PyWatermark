@@ -7,7 +7,6 @@ The repo now reflects the final project state:
 - final robust checkpoint stored in `artifacts/checkpoints/best.pt`
 - final evaluation report in `artifacts/report/evaluation_report.txt`
 - final training plots in `artifacts/results/`
-- paper source in `paper/`
 
 ## Final Result
 
@@ -45,7 +44,6 @@ Mimicry/
 ├── evaluation/
 ├── models/
 ├── notebooks/
-├── paper/
 ├── training/
 ├── utils/
 ├── cli.py
@@ -165,22 +163,6 @@ They are now written as clean experiment notebooks rather than debugging logs:
 
 - training notebook: dataset prep, environment setup, clean bootstrap, robust training, and plot export
 - evaluation notebook: checkpoint evaluation, report display, compact metric summary, and plot export
-
-## Paper
-
-The report source lives in:
-
-- `paper/main.tex`
-
-It uses the final figures from `artifacts/results/` and documents:
-
-- project motivation
-- architecture
-- training setup
-- final results
-- failure modes and limitations
-- likely causes of remaining accuracy loss
-- future work
 
 ## Known Limitations
 

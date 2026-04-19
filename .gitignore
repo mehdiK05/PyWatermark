@@ -3,6 +3,7 @@ __pycache__/
 *.pt
 *.pth
 artifacts/
+paper/main.tex
 tmp_artifacts/
 tmp_smoke_dataset/
 .ipynb_checkpoints/
